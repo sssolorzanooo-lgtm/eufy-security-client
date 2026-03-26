@@ -16,49 +16,53 @@ jobs:
           node-version: '22'
 
       - name: Install Eufy Client
-        run: npm install eufy-security-client
+        # We use --no-save to keep the installation clean and fast
+        run: npm install eufy-security-client --no-save
 
       - name: Run Control Script
         env:
           EUFY_EMAIL: ${{ secrets.EUFY_EMAIL }}
           EUFY_PASSWORD: ${{ secrets.EUFY_PASSWORD }}
         run: |
-          # Create the script in the CURRENT folder
           cat << 'EOF' > run_script.js
-          // We point directly to the installed module in node_modules
-          const { EufySecurity } = require('./node_modules/eufy-security-client');
+          const { EufySecurity } = require('eufy-security-client');
           
           async function main() {
+              const config = {
+                  username: process.env.EUFY_EMAIL,
+                  password: process.env.EUFY_PASSWORD,
+                  country: 'US',
+                  language: 'en',
+                  persistentDir: './data', // Prevents internal 'login' undefined errors
+              };
+
+              console.log('Connecting to Eufy Cloud...');
+              const eufy = new EufySecurity(config);
+
               try {
-                  const eufy = new EufySecurity({
-                      username: process.env.EUFY_EMAIL,
-                      password: process.env.EUFY_PASSWORD,
-                      country: 'US', 
-                  });
-                  
-                  console.log('Connecting to Eufy...');
+                  // Connect returns a promise; we wait for it
                   await eufy.connect();
                   
                   eufy.on('devices', (devices) => {
-                      console.log('✅ Successfully connected!');
+                      console.log('✅ Connection Success!');
                       console.log('Found ' + devices.length + ' devices:');
                       devices.forEach(d => console.log(' - ' + d.getName()));
                       process.exit(0);
                   });
 
-                  // Connection timeout
+                  // If after 20 seconds we still have no devices, report it
                   setTimeout(() => {
-                      console.log('❌ Timeout: Connected but no devices found. Check 2FA/Permissions.');
+                      console.log('❌ Connection active but no devices reported. This is usually a 2FA or permission issue.');
                       process.exit(1);
                   }, 20000);
 
-              } catch (e) {
-                  console.error('❌ Login Error:', e.message);
+              } catch (err) {
+                  console.error('❌ Login Failed:', err.message);
                   process.exit(1);
               }
           }
+
           main();
           EOF
           
-          # Run it with the legacy flag
           node --openssl-legacy-provider run_script.js
