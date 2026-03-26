@@ -7,19 +7,17 @@ jobs:
   run-eufy-task:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
 
-      - name: Install Dependencies and Build
-        # We install the tools and run the build command to create the 'dist' folder
+      - name: Setup Clean Room and Install
         run: |
-          npm install
-          npm run build
+          mkdir runner-folder
+          cd runner-folder
+          npm init -y
+          npm install eufy-security-client --no-save
 
       - name: Run Control Script
         env:
@@ -27,9 +25,9 @@ jobs:
           EUFY_EMAIL: ${{ secrets.EUFY_EMAIL }}
           EUFY_PASSWORD: ${{ secrets.EUFY_PASSWORD }}
         run: |
+          cd runner-folder
           cat << 'EOF' > run_script.js
-          // We point to the DIST folder created by the build step above
-          const { EufySecurity } = require('./dist/index.js');
+          const { EufySecurity } = require('eufy-security-client');
           
           async function main() {
               try {
@@ -37,6 +35,8 @@ jobs:
                       username: process.env.EUFY_EMAIL,
                       password: process.env.EUFY_PASSWORD,
                       country: 'US', 
+                      language: 'en',
+                      persistentDir: './data'
                   });
                   
                   console.log('Connecting to Eufy Cloud...');
@@ -49,7 +49,7 @@ jobs:
                   });
 
                   setTimeout(() => {
-                      console.log('❌ Timeout: Cloud connected but no devices seen. (Check 2FA)');
+                      console.log('❌ Timeout: No devices reported. Check for a 2FA email/text!');
                       process.exit(1);
                   }, 25000);
 
@@ -61,5 +61,4 @@ jobs:
           main();
           EOF
           
-          # Standard node execution
           node run_script.js
