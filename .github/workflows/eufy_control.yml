@@ -2,11 +2,6 @@ name: Manual Eufy Control
 
 on:
   workflow_dispatch:
-    inputs:
-      tfa_code:166449
-        description: 'Enter 6-digit 2FA Code (Leave blank for first run to trigger email)'
-        required: false
-        default: ''
 
 jobs:
   run-eufy-task:
@@ -29,7 +24,6 @@ jobs:
           NODE_OPTIONS: "--openssl-legacy-provider"
           EUFY_EMAIL: ${{ secrets.EUFY_EMAIL }}
           EUFY_PASSWORD: ${{ secrets.EUFY_PASSWORD }}
-          TFA_INPUT: ${{ github.event.inputs.tfa_code }}
         run: |
           cd eufy-run
           cat << 'EOF' > run_script.js
@@ -39,25 +33,21 @@ jobs:
               const config = {
                   username: process.env.EUFY_EMAIL,
                   password: process.env.EUFY_PASSWORD,
-                  country: 'US',
-                  persistentDir: './data'
+                  country: 'US', 
+                  language: 'en',
+                  persistentDir: './data',
+                  // In 2026, we must explicitly set the storage type to 'local'
+                  storageType: 0 
               };
 
+              console.log('Step 1: Initializing Eufy Engine...');
+              
               try {
+                  // We use the static initializer which handles all the 'undefined' internal objects for us
                   const eufy = await EufySecurity.initialize(config);
-                  const inputCode = process.env.TFA_INPUT;
 
-                  // This listener catches the "Challenge" from Eufy
-                  eufy.on('tfa_requested', () => {
-                      if (!inputCode) {
-                          console.log('⚠️ 2FA REQUIRED: Eufy just sent a code to your email/phone.');
-                          console.log('>>> STOP: Check your email, then run this again and PASTE the code in the box.');
-                          process.exit(0); 
-                      } else {
-                          console.log('Submiting 2FA Code: ' + inputCode);
-                          eufy.connect(inputCode);
-                      }
-                  });
+                  console.log('Step 2: Connecting to Cloud...');
+                  await eufy.connect();
 
                   eufy.on('devices', (devices) => {
                       console.log('✅ SUCCESS! Connection established.');
@@ -66,16 +56,15 @@ jobs:
                       process.exit(0);
                   });
 
-                  console.log('Connecting to Eufy...');
-                  await eufy.connect();
-
+                  // Handle the inevitable 2FA/Handshake wait
                   setTimeout(() => {
-                      console.log('❌ Timeout: Did not receive device list. If you entered a code, it may have expired.');
+                      console.log('❌ Timeout: Cloud connected but no devices returned.');
+                      console.log('This is almost always because Eufy sent a 2FA code to your email.');
                       process.exit(1);
                   }, 30000);
 
               } catch (e) {
-                  console.error('❌ Error:', e.message);
+                  console.error('❌ Error details:', e.message || e);
                   process.exit(1);
               }
           }
