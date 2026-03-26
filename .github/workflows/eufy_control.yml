@@ -13,11 +13,11 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '22' # Using the latest stable Node for 2026
 
-      - name: Install Eufy Client
-        # We use --no-save to keep the installation clean and fast
-        run: npm install eufy-security-client --no-save
+      - name: Install Dependencies
+        # We only install the "helper" tools the library needs to run
+        run: npm install
 
       - name: Run Control Script
         env:
@@ -25,44 +25,39 @@ jobs:
           EUFY_PASSWORD: ${{ secrets.EUFY_PASSWORD }}
         run: |
           cat << 'EOF' > run_script.js
-          const { EufySecurity } = require('eufy-security-client');
+          // Since we are INSIDE the library's folder, we point to the local build
+          // Note: If 'build' doesn't work, we try 'src'
+          const { EufySecurity } = require('./src/index.ts');
           
           async function main() {
-              const config = {
-                  username: process.env.EUFY_EMAIL,
-                  password: process.env.EUFY_PASSWORD,
-                  country: 'US',
-                  language: 'en',
-                  persistentDir: './data', // Prevents internal 'login' undefined errors
-              };
-
-              console.log('Connecting to Eufy Cloud...');
-              const eufy = new EufySecurity(config);
-
               try {
-                  // Connect returns a promise; we wait for it
+                  const eufy = new EufySecurity({
+                      username: process.env.EUFY_EMAIL,
+                      password: process.env.EUFY_PASSWORD,
+                      country: 'US', // Ensure this matches your account's country!
+                  });
+                  
+                  console.log('Connecting to Eufy Cloud...');
                   await eufy.connect();
                   
                   eufy.on('devices', (devices) => {
-                      console.log('✅ Connection Success!');
-                      console.log('Found ' + devices.length + ' devices:');
+                      console.log('✅ Success! Found ' + devices.length + ' devices:');
                       devices.forEach(d => console.log(' - ' + d.getName()));
                       process.exit(0);
                   });
 
-                  // If after 20 seconds we still have no devices, report it
                   setTimeout(() => {
-                      console.log('❌ Connection active but no devices reported. This is usually a 2FA or permission issue.');
+                      console.log('❌ Timeout: Cloud connected but no devices seen. (Check 2FA)');
                       process.exit(1);
                   }, 20000);
 
-              } catch (err) {
-                  console.error('❌ Login Failed:', err.message);
+              } catch (e) {
+                  console.error('❌ Error:', e.message);
                   process.exit(1);
               }
           }
-
           main();
           EOF
           
-          node --openssl-legacy-provider run_script.js
+          # We use ts-node because the source files are in TypeScript
+          npx ts-node --esm --openssl-legacy-provider run_script.js
