@@ -1,7 +1,7 @@
 name: Manual Eufy Control
 
 on:
-  workflow_dispatch: # This adds the "Run" button
+  workflow_dispatch:
 
 jobs:
   run-eufy-task:
@@ -13,33 +13,42 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          # Using 20.11.0 specifically as it's the most stable for Eufy
+          node-version: '20.11.0'
 
       - name: Install Eufy Client
-        run: npm install eufy-security-client
+        # Adding --legacy-peer-deps to ignore version conflicts
+        run: npm install eufy-security-client --legacy-peer-deps
 
       - name: Run Control Script
         env:
-          NODE_OPTIONS: "--openssl-legacy-provider"
+          # Re-enables older encryption needed for Eufy cameras
+          NODE_OPTIONS: "--openssl-legacy-provider --security-revert=CVE-2023-46809"
           EUFY_EMAIL: ${{ secrets.EUFY_EMAIL }}
           EUFY_PASSWORD: ${{ secrets.EUFY_PASSWORD }}
         run: |
           echo "const { EufySecurity } = require('eufy-security-client');
           async function main() {
-              const eufy = new EufySecurity({
-                  username: process.env.EUFY_EMAIL,
-                  password: process.env.EUFY_PASSWORD,
-                  country: 'US',
-              });
-              console.log('Connecting to Eufy...');
-              await eufy.connect();
-              eufy.on('devices', (devices) => {
+              try {
+                  const eufy = new EufySecurity({
+                      username: process.env.EUFY_EMAIL,
+                      password: process.env.EUFY_PASSWORD,
+                      country: 'US',
+                  });
+                  console.log('Connecting to Eufy...');
+                  await eufy.connect();
                   console.log('Successfully connected!');
-                  console.log('Found ' + devices.length + ' devices.');
-                  devices.forEach(d => console.log(' - ' + d.getName()));
-                  process.exit(0);
-              });
-              setTimeout(() => { console.log('Timeout!'); process.exit(1); }, 30000);
+                  
+                  eufy.on('devices', (devices) => {
+                      console.log('Found ' + devices.length + ' devices.');
+                      devices.forEach(d => console.log(' - ' + d.getName()));
+                      process.exit(0);
+                  });
+              } catch (e) {
+                  console.error('Script Error:', e.message);
+                  process.exit(1);
+              }
+              setTimeout(() => { console.log('Timeout waiting for devices.'); process.exit(1); }, 30000);
           }
           main();" > run_script.js
           node run_script.js
