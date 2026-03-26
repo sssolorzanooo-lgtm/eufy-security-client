@@ -15,42 +15,45 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Install Dependencies
-        run: npm install
+      - name: Install Dependencies and Build
+        # We install the tools and run the build command to create the 'dist' folder
+        run: |
+          npm install
+          npm run build
 
       - name: Run Control Script
         env:
-          # This tells Node 22 to allow Eufy's older security style
           NODE_OPTIONS: "--openssl-legacy-provider"
           EUFY_EMAIL: ${{ secrets.EUFY_EMAIL }}
           EUFY_PASSWORD: ${{ secrets.EUFY_PASSWORD }}
         run: |
-          cat << 'EOF' > run_script.ts
-          import { EufySecurity } from './src/index';
+          cat << 'EOF' > run_script.js
+          // We point to the DIST folder created by the build step above
+          const { EufySecurity } = require('./dist/index.js');
           
           async function main() {
               try {
                   const eufy = new EufySecurity({
-                      username: process.env.EUFY_EMAIL!,
-                      password: process.env.EUFY_PASSWORD!,
+                      username: process.env.EUFY_EMAIL,
+                      password: process.env.EUFY_PASSWORD,
                       country: 'US', 
                   });
                   
                   console.log('Connecting to Eufy Cloud...');
                   await eufy.connect();
                   
-                  eufy.on('devices', (devices: any[]) => {
+                  eufy.on('devices', (devices) => {
                       console.log('✅ Success! Found ' + devices.length + ' devices:');
                       devices.forEach(d => console.log(' - ' + d.getName()));
                       process.exit(0);
                   });
 
                   setTimeout(() => {
-                      console.log('❌ Timeout: Cloud connected but no devices seen. (Likely 2FA)');
+                      console.log('❌ Timeout: Cloud connected but no devices seen. (Check 2FA)');
                       process.exit(1);
-                  }, 20000);
+                  }, 25000);
 
-              } catch (e: any) {
+              } catch (e) {
                   console.error('❌ Error:', e.message);
                   process.exit(1);
               }
@@ -58,5 +61,5 @@ jobs:
           main();
           EOF
           
-          # We use npx ts-node WITHOUT the flags that caused the error
-          npx ts-node --esm run_script.ts
+          # Standard node execution
+          node run_script.js
