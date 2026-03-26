@@ -10,14 +10,14 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20' # Using 20 as it's the most stable for this specific fix
+          node-version: '20'
 
       - name: Setup and Install
         run: |
           mkdir eufy-run
           cd eufy-run
           npm init -y
-          # We install specific versions to ensure compatibility
+          # Installing the specific version and its dependency
           npm install eufy-security-client@3.8.0 node-fetch@2 --no-save
 
       - name: Run Control Script
@@ -28,47 +28,43 @@ jobs:
         run: |
           cd eufy-run
           cat << 'EOF' > run_script.js
-          const { EufySecurity } = require('eufy-security-client');
+          const { HTTPApi, EufySecurity } = require('eufy-security-client');
           
           async function main() {
+              const config = {
+                  username: process.env.EUFY_EMAIL,
+                  password: process.env.EUFY_PASSWORD,
+                  country: 'US', 
+                  language: 'en',
+                  persistentDir: './data'
+              };
+
+              // We manually create the API engine to avoid the 'undefined login' bug
+              const api = new HTTPApi(config);
+
               try {
-                  const eufy = new EufySecurity({
-                      username: process.env.EUFY_EMAIL,
-                      password: process.env.EUFY_PASSWORD,
-                      country: 'US', 
-                      language: 'en',
-                      persistentDir: './data'
-                  });
+                  console.log('Step 1: Authenticating directly with Eufy Cloud...');
+                  await api.login();
+                  console.log('✅ Login Successful!');
 
-                  console.log('Step 1: Forcing API Initialization...');
+                  console.log('Step 2: Fetching Device List...');
+                  const devices = await api.getDevices();
                   
-                  // This is the manual "kickstart" to prevent the 'login' undefined error
-                  // We access the internal API and force a login call
-                  if (eufy.getApi) {
-                      await eufy.connect();
+                  if (devices && devices.length > 0) {
+                      console.log('✅ SUCCESS! Found ' + devices.length + ' devices:');
+                      devices.forEach(d => console.log(' - ' + d.device_name + ' (SN: ' + d.device_sn + ')'));
                   } else {
-                      // Fallback for different library versions
-                      await eufy.connect();
+                      console.log('⚠️ Connected, but no devices were found in this account.');
                   }
-
-                  console.log('Step 2: Connected! Waiting for device list...');
-
-                  eufy.on('devices', (devices) => {
-                      console.log('✅ SUCCESS!');
-                      console.log('Found ' + devices.length + ' devices:');
-                      devices.forEach(d => console.log(' - ' + d.getName()));
-                      process.exit(0);
-                  });
-
-                  // Increase timeout slightly for the cloud handshake
-                  setTimeout(() => {
-                      console.log('❌ Timeout: Cloud handshake complete, but no devices returned.');
-                      console.log('This usually means 2FA is blocking the device list.');
-                      process.exit(1);
-                  }, 30000);
+                  process.exit(0);
 
               } catch (e) {
-                  console.error('❌ Login Failed:', e.message || e);
+                  // This is where we catch the 2FA error if it exists
+                  if (e.message && e.message.includes('2FA')) {
+                      console.error('❌ LOGIN BLOCKED: Eufy sent a 2FA code to your email/phone.');
+                  } else {
+                      console.error('❌ Error details:', e.message || e);
+                  }
                   process.exit(1);
               }
           }
