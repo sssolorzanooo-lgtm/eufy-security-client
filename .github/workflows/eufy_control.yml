@@ -3,7 +3,7 @@ name: Manual Eufy Control
 on:
   workflow_dispatch:
     inputs:
-      tfa_code:166449
+      tfa_code: 166449
         description: 'Enter 6-digit 2FA Code (Leave blank for first run to trigger email)'
         required: false
         default: ''
