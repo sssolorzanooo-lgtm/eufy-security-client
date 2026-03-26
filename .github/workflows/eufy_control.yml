@@ -13,10 +13,10 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          # Node 22 is required for Eufy Client 3.8.0+
           node-version: '22'
 
       - name: Install Eufy Client
+        # This installs the library into a fresh node_modules folder
         run: npm install eufy-security-client
 
       - name: Run Control Script
@@ -24,14 +24,18 @@ jobs:
           EUFY_EMAIL: ${{ secrets.EUFY_EMAIL }}
           EUFY_PASSWORD: ${{ secrets.EUFY_PASSWORD }}
         run: |
-          echo "const { EufySecurity } = require('eufy-security-client');
+          # We create the script in a temporary location to avoid folder conflicts
+          cat << 'EOF' > ../my_temp_script.js
+          const { EufySecurity } = require('eufy-security-client');
+          
           async function main() {
               try {
                   const eufy = new EufySecurity({
                       username: process.env.EUFY_EMAIL,
                       password: process.env.EUFY_PASSWORD,
-                      country: 'US', // Set to your country code (US, GB, DE, etc.)
+                      country: 'US', 
                   });
+                  
                   console.log('Connecting to Eufy...');
                   await eufy.connect();
                   
@@ -41,16 +45,20 @@ jobs:
                       devices.forEach(d => console.log(' - ' + d.getName()));
                       process.exit(0);
                   });
+
+                  // If no devices found after 15 seconds, something is wrong
+                  setTimeout(() => {
+                      console.log('Timeout: Connected to cloud but no devices reported.');
+                      process.exit(1);
+                  }, 15000);
+
               } catch (e) {
-                  console.error('Script Error:', e.message);
+                  console.error('Login Error:', e.message);
                   process.exit(1);
               }
-              setTimeout(() => { 
-                  console.log('Timeout: Connection took too long.'); 
-                  process.exit(1); 
-              }, 30000);
           }
-          main();" > run_script.js
+          main();
+          EOF
           
-          # Use legacy provider for Eufy encryption compatibility
-          node --openssl-legacy-provider run_script.js
+          # Run the script using the legacy provider flag
+          node --openssl-legacy-provider ../my_temp_script.js
