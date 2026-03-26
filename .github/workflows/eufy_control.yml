@@ -1,0 +1,45 @@
+name: Manual Eufy Control
+
+on:
+  workflow_dispatch: # This adds the "Run" button
+
+jobs:
+  run-eufy-task:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install Eufy Client
+        run: npm install eufy-security-client
+
+      - name: Run Control Script
+        env:
+          NODE_OPTIONS: "--openssl-legacy-provider"
+          EUFY_EMAIL: ${{ secrets.EUFY_EMAIL }}
+          EUFY_PASSWORD: ${{ secrets.EUFY_PASSWORD }}
+        run: |
+          echo "const { EufySecurity } = require('eufy-security-client');
+          async function main() {
+              const eufy = new EufySecurity({
+                  username: process.env.EUFY_EMAIL,
+                  password: process.env.EUFY_PASSWORD,
+                  country: 'US',
+              });
+              console.log('Connecting to Eufy...');
+              await eufy.connect();
+              eufy.on('devices', (devices) => {
+                  console.log('Successfully connected!');
+                  console.log('Found ' + devices.length + ' devices.');
+                  devices.forEach(d => console.log(' - ' + d.getName()));
+                  process.exit(0);
+              });
+              setTimeout(() => { console.log('Timeout!'); process.exit(1); }, 30000);
+          }
+          main();" > run_script.js
+          node run_script.js
