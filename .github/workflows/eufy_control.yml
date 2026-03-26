@@ -16,7 +16,6 @@ jobs:
           node-version: '22'
 
       - name: Install Eufy Client
-        # This installs the library into a fresh node_modules folder
         run: npm install eufy-security-client
 
       - name: Run Control Script
@@ -24,9 +23,10 @@ jobs:
           EUFY_EMAIL: ${{ secrets.EUFY_EMAIL }}
           EUFY_PASSWORD: ${{ secrets.EUFY_PASSWORD }}
         run: |
-          # We create the script in a temporary location to avoid folder conflicts
-          cat << 'EOF' > ../my_temp_script.js
-          const { EufySecurity } = require('eufy-security-client');
+          # Create the script in the CURRENT folder
+          cat << 'EOF' > run_script.js
+          // We point directly to the installed module in node_modules
+          const { EufySecurity } = require('./node_modules/eufy-security-client');
           
           async function main() {
               try {
@@ -40,25 +40,25 @@ jobs:
                   await eufy.connect();
                   
                   eufy.on('devices', (devices) => {
-                      console.log('Successfully connected!');
-                      console.log('Found ' + devices.length + ' devices.');
+                      console.log('✅ Successfully connected!');
+                      console.log('Found ' + devices.length + ' devices:');
                       devices.forEach(d => console.log(' - ' + d.getName()));
                       process.exit(0);
                   });
 
-                  // If no devices found after 15 seconds, something is wrong
+                  // Connection timeout
                   setTimeout(() => {
-                      console.log('Timeout: Connected to cloud but no devices reported.');
+                      console.log('❌ Timeout: Connected but no devices found. Check 2FA/Permissions.');
                       process.exit(1);
-                  }, 15000);
+                  }, 20000);
 
               } catch (e) {
-                  console.error('Login Error:', e.message);
+                  console.error('❌ Login Error:', e.message);
                   process.exit(1);
               }
           }
           main();
           EOF
           
-          # Run the script using the legacy provider flag
-          node --openssl-legacy-provider ../my_temp_script.js
+          # Run it with the legacy flag
+          node --openssl-legacy-provider run_script.js
