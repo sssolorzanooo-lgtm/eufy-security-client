@@ -27,45 +27,44 @@ jobs:
         run: |
           cd eufy-run
           cat << 'EOF' > run_script.js
-          const { HTTPApi } = require('eufy-security-client');
+          const { EufySecurity } = require('eufy-security-client');
           
           async function main() {
-              // The HTTPApi constructor expects (username, password, country, language, persistentDir)
-              // NOT a single config object.
-              const username = process.env.EUFY_EMAIL;
-              const password = process.env.EUFY_PASSWORD;
-              const country = 'US'; 
-              const language = 'en';
-              const persistentDir = './data';
+              const config = {
+                  username: process.env.EUFY_EMAIL,
+                  password: process.env.EUFY_PASSWORD,
+                  country: 'US', 
+                  language: 'en',
+                  persistentDir: './data',
+                  // In 2026, we must explicitly set the storage type to 'local'
+                  storageType: 0 
+              };
 
-              console.log('Step 1: Authenticating directly with Eufy Cloud...');
+              console.log('Step 1: Initializing Eufy Engine...');
               
               try {
-                  // Direct constructor call
-                  const api = new HTTPApi(username, password, country, language, persistentDir);
+                  // We use the static initializer which handles all the 'undefined' internal objects for us
+                  const eufy = await EufySecurity.initialize(config);
 
-                  await api.login();
-                  console.log('✅ Login Successful!');
+                  console.log('Step 2: Connecting to Cloud...');
+                  await eufy.connect();
 
-                  console.log('Step 2: Fetching Device List...');
-                  const devices = await api.getDevices();
-                  
-                  if (devices && devices.length > 0) {
-                      console.log('✅ SUCCESS! Found ' + devices.length + ' devices:');
-                      devices.forEach(d => {
-                          console.log(` - Name: ${d.device_name} | Model: ${d.device_model} | SN: ${d.device_sn}`);
-                      });
-                  } else {
-                      console.log('⚠️ Connected, but no devices found. Ensure devices are shared with this account.');
-                  }
-                  process.exit(0);
+                  eufy.on('devices', (devices) => {
+                      console.log('✅ SUCCESS! Connection established.');
+                      console.log('Found ' + devices.length + ' devices:');
+                      devices.forEach(d => console.log(' - ' + d.getName()));
+                      process.exit(0);
+                  });
+
+                  // Handle the inevitable 2FA/Handshake wait
+                  setTimeout(() => {
+                      console.log('❌ Timeout: Cloud connected but no devices returned.');
+                      console.log('This is almost always because Eufy sent a 2FA code to your email.');
+                      process.exit(1);
+                  }, 30000);
 
               } catch (e) {
-                  if (e.message && (e.message.includes('2FA') || e.message.includes('verification'))) {
-                      console.error('❌ LOGIN BLOCKED: Eufy 2FA is active. Check your email/phone.');
-                  } else {
-                      console.error('❌ Error details:', e.message || e);
-                  }
+                  console.error('❌ Error details:', e.message || e);
                   process.exit(1);
               }
           }
