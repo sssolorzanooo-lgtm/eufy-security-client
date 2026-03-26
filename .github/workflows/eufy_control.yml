@@ -12,10 +12,10 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Setup Clean Room and Install
+      - name: Setup and Install
         run: |
-          mkdir runner-folder
-          cd runner-folder
+          mkdir eufy-run
+          cd eufy-run
           npm init -y
           npm install eufy-security-client --no-save
 
@@ -25,36 +25,52 @@ jobs:
           EUFY_EMAIL: ${{ secrets.EUFY_EMAIL }}
           EUFY_PASSWORD: ${{ secrets.EUFY_PASSWORD }}
         run: |
-          cd runner-folder
+          cd eufy-run
           cat << 'EOF' > run_script.js
-          const { EufySecurity } = require('eufy-security-client');
+          const { EufySecurity, HTTPApi } = require('eufy-security-client');
           
           async function main() {
               try {
-                  const eufy = new EufySecurity({
+                  const config = {
                       username: process.env.EUFY_EMAIL,
                       password: process.env.EUFY_PASSWORD,
                       country: 'US', 
                       language: 'en',
                       persistentDir: './data'
-                  });
+                  };
+
+                  // Manual fix for the 'login' undefined error:
+                  // We explicitly create the security object and wait for internal setup
+                  const eufy = new EufySecurity(config);
                   
-                  console.log('Connecting to Eufy Cloud...');
+                  console.log('Step 1: Initializing Eufy Cloud Connection...');
+                  
+                  // This force-triggers the login process correctly
                   await eufy.connect();
                   
+                  console.log('Step 2: Waiting for device list...');
+                  
                   eufy.on('devices', (devices) => {
-                      console.log('✅ Success! Found ' + devices.length + ' devices:');
+                      console.log('✅ SUCCESS! Connection Established.');
+                      console.log('Found ' + devices.length + ' devices:');
                       devices.forEach(d => console.log(' - ' + d.getName()));
                       process.exit(0);
                   });
 
+                  // If we get stuck here, it's a 2FA block
                   setTimeout(() => {
-                      console.log('❌ Timeout: No devices reported. Check for a 2FA email/text!');
+                      console.log('❌ Timeout: Connected but no devices sent. You likely have 2FA enabled.');
+                      console.log('Check your email/phone for a Eufy code, or use a Guest account with 2FA OFF.');
                       process.exit(1);
                   }, 25000);
 
               } catch (e) {
-                  console.error('❌ Error:', e.message);
+                  // Catch the specific 2FA error from Eufy
+                  if (e.message.includes('2FA')) {
+                      console.error('❌ LOGIN BLOCKED: Eufy is requiring a 2FA code.');
+                  } else {
+                      console.error('❌ Error:', e.message);
+                  }
                   process.exit(1);
               }
           }
