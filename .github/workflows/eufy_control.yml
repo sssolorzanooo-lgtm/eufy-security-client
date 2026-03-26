@@ -17,7 +17,6 @@ jobs:
           mkdir eufy-run
           cd eufy-run
           npm init -y
-          # Installing the specific version and its dependency
           npm install eufy-security-client@3.8.0 node-fetch@2 --no-save
 
       - name: Run Control Script
@@ -28,22 +27,23 @@ jobs:
         run: |
           cd eufy-run
           cat << 'EOF' > run_script.js
-          const { HTTPApi, EufySecurity } = require('eufy-security-client');
+          const { HTTPApi } = require('eufy-security-client');
           
           async function main() {
-              const config = {
-                  username: process.env.EUFY_EMAIL,
-                  password: process.env.EUFY_PASSWORD,
-                  country: 'US', 
-                  language: 'en',
-                  persistentDir: './data'
-              };
+              // The HTTPApi constructor expects (username, password, country, language, persistentDir)
+              // NOT a single config object.
+              const username = process.env.EUFY_EMAIL;
+              const password = process.env.EUFY_PASSWORD;
+              const country = 'US'; 
+              const language = 'en';
+              const persistentDir = './data';
 
-              // We manually create the API engine to avoid the 'undefined login' bug
-              const api = new HTTPApi(config);
-
+              console.log('Step 1: Authenticating directly with Eufy Cloud...');
+              
               try {
-                  console.log('Step 1: Authenticating directly with Eufy Cloud...');
+                  // Direct constructor call
+                  const api = new HTTPApi(username, password, country, language, persistentDir);
+
                   await api.login();
                   console.log('✅ Login Successful!');
 
@@ -52,16 +52,17 @@ jobs:
                   
                   if (devices && devices.length > 0) {
                       console.log('✅ SUCCESS! Found ' + devices.length + ' devices:');
-                      devices.forEach(d => console.log(' - ' + d.device_name + ' (SN: ' + d.device_sn + ')'));
+                      devices.forEach(d => {
+                          console.log(` - Name: ${d.device_name} | Model: ${d.device_model} | SN: ${d.device_sn}`);
+                      });
                   } else {
-                      console.log('⚠️ Connected, but no devices were found in this account.');
+                      console.log('⚠️ Connected, but no devices found. Ensure devices are shared with this account.');
                   }
                   process.exit(0);
 
               } catch (e) {
-                  // This is where we catch the 2FA error if it exists
-                  if (e.message && e.message.includes('2FA')) {
-                      console.error('❌ LOGIN BLOCKED: Eufy sent a 2FA code to your email/phone.');
+                  if (e.message && (e.message.includes('2FA') || e.message.includes('verification'))) {
+                      console.error('❌ LOGIN BLOCKED: Eufy 2FA is active. Check your email/phone.');
                   } else {
                       console.error('❌ Error details:', e.message || e);
                   }
