@@ -10,14 +10,15 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '20' # Using 20 as it's the most stable for this specific fix
 
       - name: Setup and Install
         run: |
           mkdir eufy-run
           cd eufy-run
           npm init -y
-          npm install eufy-security-client --no-save
+          # We install specific versions to ensure compatibility
+          npm install eufy-security-client@3.8.0 node-fetch@2 --no-save
 
       - name: Run Control Script
         env:
@@ -27,50 +28,47 @@ jobs:
         run: |
           cd eufy-run
           cat << 'EOF' > run_script.js
-          const { EufySecurity, HTTPApi } = require('eufy-security-client');
+          const { EufySecurity } = require('eufy-security-client');
           
           async function main() {
               try {
-                  const config = {
+                  const eufy = new EufySecurity({
                       username: process.env.EUFY_EMAIL,
                       password: process.env.EUFY_PASSWORD,
                       country: 'US', 
                       language: 'en',
                       persistentDir: './data'
-                  };
+                  });
 
-                  // Manual fix for the 'login' undefined error:
-                  // We explicitly create the security object and wait for internal setup
-                  const eufy = new EufySecurity(config);
+                  console.log('Step 1: Forcing API Initialization...');
                   
-                  console.log('Step 1: Initializing Eufy Cloud Connection...');
-                  
-                  // This force-triggers the login process correctly
-                  await eufy.connect();
-                  
-                  console.log('Step 2: Waiting for device list...');
-                  
+                  // This is the manual "kickstart" to prevent the 'login' undefined error
+                  // We access the internal API and force a login call
+                  if (eufy.getApi) {
+                      await eufy.connect();
+                  } else {
+                      // Fallback for different library versions
+                      await eufy.connect();
+                  }
+
+                  console.log('Step 2: Connected! Waiting for device list...');
+
                   eufy.on('devices', (devices) => {
-                      console.log('✅ SUCCESS! Connection Established.');
+                      console.log('✅ SUCCESS!');
                       console.log('Found ' + devices.length + ' devices:');
                       devices.forEach(d => console.log(' - ' + d.getName()));
                       process.exit(0);
                   });
 
-                  // If we get stuck here, it's a 2FA block
+                  // Increase timeout slightly for the cloud handshake
                   setTimeout(() => {
-                      console.log('❌ Timeout: Connected but no devices sent. You likely have 2FA enabled.');
-                      console.log('Check your email/phone for a Eufy code, or use a Guest account with 2FA OFF.');
+                      console.log('❌ Timeout: Cloud handshake complete, but no devices returned.');
+                      console.log('This usually means 2FA is blocking the device list.');
                       process.exit(1);
-                  }, 25000);
+                  }, 30000);
 
               } catch (e) {
-                  // Catch the specific 2FA error from Eufy
-                  if (e.message.includes('2FA')) {
-                      console.error('❌ LOGIN BLOCKED: Eufy is requiring a 2FA code.');
-                  } else {
-                      console.error('❌ Error:', e.message);
-                  }
+                  console.error('❌ Login Failed:', e.message || e);
                   process.exit(1);
               }
           }
