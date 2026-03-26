@@ -13,17 +13,13 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          # Using 20.11.0 specifically as it's the most stable for Eufy
-          node-version: '20.11.0'
+          node-version: '18' # Node 18 is the "sweet spot" for Eufy legacy support
 
       - name: Install Eufy Client
-        # Adding --legacy-peer-deps to ignore version conflicts
         run: npm install eufy-security-client --legacy-peer-deps
 
       - name: Run Control Script
         env:
-          # Re-enables older encryption needed for Eufy cameras
-          NODE_OPTIONS: "--openssl-legacy-provider --security-revert=CVE-2023-46809"
           EUFY_EMAIL: ${{ secrets.EUFY_EMAIL }}
           EUFY_PASSWORD: ${{ secrets.EUFY_PASSWORD }}
         run: |
@@ -37,9 +33,9 @@ jobs:
                   });
                   console.log('Connecting to Eufy...');
                   await eufy.connect();
-                  console.log('Successfully connected!');
                   
                   eufy.on('devices', (devices) => {
+                      console.log('Successfully connected!');
                       console.log('Found ' + devices.length + ' devices.');
                       devices.forEach(d => console.log(' - ' + d.getName()));
                       process.exit(0);
@@ -48,7 +44,12 @@ jobs:
                   console.error('Script Error:', e.message);
                   process.exit(1);
               }
-              setTimeout(() => { console.log('Timeout waiting for devices.'); process.exit(1); }, 30000);
+              setTimeout(() => { 
+                  console.log('Timeout: Could not find devices. Check 2FA status.'); 
+                  process.exit(1); 
+              }, 30000);
           }
           main();" > run_script.js
-          node run_script.js
+          
+          # We put the flags directly on the command here to bypass the restriction
+          node --openssl-legacy-provider run_script.js
