@@ -13,10 +13,11 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18' # Node 18 is the "sweet spot" for Eufy legacy support
+          # Node 22 is required for Eufy Client 3.8.0+
+          node-version: '22'
 
       - name: Install Eufy Client
-        run: npm install eufy-security-client --legacy-peer-deps
+        run: npm install eufy-security-client
 
       - name: Run Control Script
         env:
@@ -29,7 +30,7 @@ jobs:
                   const eufy = new EufySecurity({
                       username: process.env.EUFY_EMAIL,
                       password: process.env.EUFY_PASSWORD,
-                      country: 'US',
+                      country: 'US', // Set to your country code (US, GB, DE, etc.)
                   });
                   console.log('Connecting to Eufy...');
                   await eufy.connect();
@@ -45,11 +46,11 @@ jobs:
                   process.exit(1);
               }
               setTimeout(() => { 
-                  console.log('Timeout: Could not find devices. Check 2FA status.'); 
+                  console.log('Timeout: Connection took too long.'); 
                   process.exit(1); 
               }, 30000);
           }
           main();" > run_script.js
           
-          # We put the flags directly on the command here to bypass the restriction
+          # Use legacy provider for Eufy encryption compatibility
           node --openssl-legacy-provider run_script.js
